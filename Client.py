@@ -1,49 +1,31 @@
 import socket
 
-# Adresa dhe porti i serverit
-server_address = '127.0.0.1'  # Ndryshoni këtë sipas nevojës
-server_port = 9999  # Ndryshoni këtë sipas nevojës
-
-# Krijimi i soketit të klientit
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# Lidhja me serverin
-try:
-    client_socket.connect((server_address, server_port))
-    print(f'Lidhja me serverin {server_address}:{server_port} u krye me sukses.')
-except Exception as e:
-    print(f'Gabim gjatë lidhjes me serverin: {str(e)}')
-    exit()
+server_port = 12345
+server_ip = '127.0.0.2'
 
-# Definimi i funksionit për dërgimin e kerkesave dhe marrjen e përgjigjeve
-def dergo_kerkesen(kerkesa):
-    try:
-        client_socket.sendall(kerkesa.encode("utf-8"))
-        pergjigja = client_socket.recv(4096).decode("utf-8")
-        return pergjigja
-    except Exception as e:
-        print(f'Gabim gjatë dërgimit të kerkesës: {str(e)}')
-        return None
+client_socket.connect((server_ip, server_port))
+print(f"Lidhur me serverin {server_ip}:{server_port}")
 
-# Lidhja e një pajisjeje me privilegji të plotë
-kerkesa_privilegje_te_plote = "PRIVILEGE FULL_ACCESS_DEVICE\r\n"
-pergjigja_privilegje_te_plote = dergo_kerkesen(kerkesa_privilegje_te_plote)
-print("Përgjigja për PRIVILEGE FULL_ACCESS_DEVICE:\n", pergjigja_privilegje_te_plote)
+action = input("Zgjedhni veprimin (READ, WRITE, EXECUTE): ").upper()
 
-# Lidhja e një pajisjeje me read() permission
-kerkesa_privilegje_read = "PRIVILEGE READ_ONLY_DEVICE\r\n"
-pergjigja_privilegje_read = dergo_kerkesen(kerkesa_privilegje_read)
-print("\nPërgjigja për PRIVILEGE READ_ONLY_DEVICE:\n", pergjigja_privilegje_read)
+# Dërgo kërkesën tek serveri
+client_socket.send(action.encode())
 
-# Dërgimi i një mesazhi tek serveri
-mesazhi = "SEND_MESSAGE Hello from the client!\r\n"
-pergjigja_mesazhi = dergo_kerkesen(mesazhi)
-print("\nPërgjigja për SEND_MESSAGE:\n", pergjigja_mesazhi)
+# Për kërkesën 'WRITE', kërko përdoruesin të shkruajë përmbajtjen
+if action == 'WRITE':
+    content = input("Shkruaj përmbajtjen për file-in: ")
+    client_socket.send(content.encode())
 
-# Qasja në folderat/përmbajtjen në server (p.sh., leximi i një file)
-kerkesa_lexo_file = "READ /index.html\r\n"
-pergjigja_lexo_file = dergo_kerkesen(kerkesa_lexo_file)
-print("\nPërgjigja për READ /index.html:\n", pergjigja_lexo_file)
+# Pranojë përgjigjen nga serveri
+response = client_socket.recv(1024).decode()
+print(f"Përgjigja nga serveri: {response}")
 
-# Mbyllja e lidhjes me serverin
-client_socket.close()
+# Kontrollo nese përdoruesi dëshiron të vazhdojë
+pergjigja_e_përdoruesit = input("Dëshironi të vazhdoni (po/jo)? ").lower()
+if pergjigja_e_përdoruesit != 'po' :
+    client_socket.close()
+
+# Mbyll lidhjen me serverin
+
