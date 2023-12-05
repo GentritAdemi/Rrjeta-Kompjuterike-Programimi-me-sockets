@@ -1,150 +1,88 @@
 import socket
 import os
-import codecs
 
-# 1. Vendos variablat për IP adresën dhe numrin e portit
-serverName = '127.0.0.1'  # Mund të ndryshohet sipas nevojës
-serverPort = 9999  # Mund të ndryshohet sipas nevojës
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# 2. Dëgjo listën e anëtarëve të grupit
-members = []
+server_port = 12345
+server_ip = '127.0.0.2'
 
-# 3. Krijimi i një fjalor për të ruajtur privilegjet e klientëve
-privilegjet = {}
+server_socket.bind((server_ip, server_port))
 
-serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-serverSocket.bind((serverName, serverPort))
-serverSocket.listen(10)
-print(f'Serveri eshte startuar ne portin {serverPort}')
+server_socket.listen(4)
 
-def handle_client(clientSocket):
-    pranimi = clientSocket.recv(1024)
-    kerkesa = pranimi.decode("utf-8")
+print(f"Serveri është në pritje për lidhje në {server_ip}:{server_port}")
 
-    get = kerkesa[0:3]
-    if get != 'GET':
-        return
+# Numri maksimal i klientëve
+max_clients = 4
+num_clients = 0
 
-    index = int(kerkesa.index('HTTP/1.'))
-    pathi = kerkesa[4:index]
-    folderCheck = pathi.count('/')
-    folder = ''
-    file = ''
-
-    if folderCheck > 1:
-        folder = pathi[pathi.find('/'):pathi.rfind('/') + 1]
-        file = pathi[pathi.rfind('/') + 1:]
-    else:
-        file = pathi[1:]
-
-    # 4. Verifikimi i privilegjeve të klientit
-    klienti_address = clientSocket.getpeername()[0]
-    if klienti_address in privilegjet:
-        privilegji = privilegjet[klienti_address]
-    else:
-        privilegji = "read"  # Në rast se klienti nuk ka privilegje të ndryshme, atëherë i jepet privilegji "read"
-
-    if file.strip() == 'index.html':
-        f = codecs.open(file, 'r', 'utf-8-sig')
-        fajlliFizik = f.read()
-        pergjigjja = (f"HTTP/1.1 200 OK\r\n"
-                      f"Content-Type: text/html\r\n\r\n"
-                      f"{fajlliFizik}").encode("utf-8")
-
-    elif file.strip() == 'members.txt':
-        # 5. Kontrollo për privilegjet për members.txt
-        if privilegji == "full":
-            # Në rast se klienti ka privilegjin "full", atëherë mund të lexojë members.txt
-            members_str = "\n".join(members)
-            pergjigjja = (f"HTTP/1.1 200 OK\r\n"
-                          f"Content-Type: text/plain\r\n\r\n"
-                          f"Anetaret e grupit:\n{members_str}").encode("utf-8")
-        else:
-            pergjigjja = (f"HTTP/1.1 403 Forbidden\r\n"
-                          f"Content-Type: text/plain\r\n\r\n"
-                          f"Ju nuk keni leje për të lexuar këtë resurs.").encode("utf-8")
-
-
-    elif file.strip().startswith('execute/'):
-        # 6. Kontrollo për privilegjet për ekzekutimin e komandës
-        if privilegji == "full":
-            # Në rast se klienti ka privilegjin "full", atëherë mund të ekzekutojë komandën
-            command = file[len('execute/'):]
-            try:
-                output = os.popen(command).read()
-                pergjigjja = (f"HTTP/1.1 200 OK\r\n"
-                              f"Content-Type: text/plain\r\n\r\n"
-                              f"{output}").encode("utf-8")
-            except Exception as e:
-                pergjigjja = (f"HTTP/1.1 500 Internal Server Error\r\n"
-                              f"Content-Type: text/plain\r\n\r\n"
-                              f"Gabim gjatë ekzekutimit të komandës: {str(e)}").encode("utf-8")
-        else:
-            pergjigjja = (f"HTTP/1.1 403 Forbidden\r\n"
-                          f"Content-Type: text/plain\r\n\r\n"
-                          f"Ju nuk keni leje për të ekzekutuar këtë komandë.").encode("utf-8")
-
-    elif file.strip().startswith('access/'):
-        # 7. Kontrollo për privilegjet për qasjen në foldera dhe file-t
-        if privilegji == "full":
-            # Në rast se klienti ka privilegjin "full", atëherë mund të qaset në foldera dhe file-t
-            path = file[len('access/'):]
-            try:
-                with open(path, 'rb') as f:
-                    file_content = f.read()
-                    pergjigjja = (f"HTTP/1.1 200 OK\r\n"
-                                  f"Content-Type: application/octet-stream\r\n\r\n"
-                                  f"{file_content}").encode("utf-8")
-            except FileNotFoundError:
-                pergjigjja = (f"HTTP/1.1 404 Not Found\r\n"
-                              f"Content-Type: text/html\r\n\r\n"
-                              f"Ky fajll nuk ekziston").encode("utf-8")
-        else:
-            pergjigjja = (f"HTTP/1.1 403 Forbidden\r\n"
-                          f"Content-Type: text/plain\r\n\r\n"
-                          f"Ju nuk keni leje për të qasur këtë resurs.").encode("utf-8")
-
-    elif file.strip().startswith('permissions/'):
-        # 8. Kontrollo për kërkesat e ndryshimit të privilegjeve
-        if privilegji == "full":
-            path = file[len('permissions/'):]
-            try:
-                with open(path, 'r') as f:
-                    permissions = f.read().strip().lower()
-                    pergjigjja = (f"HTTP/1.1 200 OK\r\n"
-                                  f"Content-Type: text/plain\r\n\r\n"
-                                  f"Privilegjet aktuale: {permissions}").encode("utf-8")
-            except FileNotFoundError:
-                pergjigjja = (f"HTTP/1.1 404 Not Found\r\n"
-                              f"Content-Type: text/html\r\n\r\n"
-                              f"Ky fajll nuk ekziston").encode("utf-8")
-        else:
-            pergjigjja = (f"HTTP/1.1 403 Forbidden\r\n"
-                          f"Content-Type: text/plain\r\n\r\n"
-                          f"Ju nuk keni leje për të qasur këtë resurs.").encode("utf-8")
-
-    else:
-        pergjigjja = (f"HTTP/1.1 404 Not Found\r\n"
-                      f"Content-Type: text/html\r\n\r\n"
-                      f"Ky fajll nuk ekziston").encode("utf-8")
-
-    clientSocket.sendall(pergjigjja)
-    clientSocket.close()
+# Përcakto një flag për të parë nëse klienti i parë ka privilegjet për 'WRITE' dhe 'EXECUTE'
+first_client = True
 
 while True:
-    clientSocket, address = serverSocket.accept()
-    members.append(address[0])  # 9. Lexo mesazhet nga klientët
+    # Prisni për një lidhje nga një klient
+    client_socket, client_address = server_socket.accept()
+    print(f"Lidhur me klientin {client_address}")
 
-    # 10. Kërko dhe ruaj privilegjet e klientit në fjalor
-    kerkesa_privilegji = clientSocket.recv(1024).decode("utf-8")
-    if kerkesa_privilegji.startswith("PRIVILEGE"):
-        _, klienti_address, privilegji = kerkesa_privilegji.split()
-        privilegjet[klienti_address] = privilegji
+    # Nëse numri i klientëve aktive është më i vogël se 4
+    if num_clients < max_clients:
+        num_clients += 1  # Rrit numrin e klientëve aktive
 
-        # 11. Përgjigja për kërkesën e privilegjeve
-        pergjigjja_privilegji = f"PRIVILEGE_GRANTED {privilegji}\r\n"
-        clientSocket.sendall(pergjigjja_privilegji.encode("utf-8"))
-        continue
+        # Nëse është klienti i parë dhe ka privilegjet e duhura
+        if first_client:
+            while True:
+                try:
+                    # Pranojë kërkesat nga klienti
+                    request = client_socket.recv(1024).decode()
 
-    handle_client(clientSocket)
+                    # Përpunimi i kërkesës së klientit
+                    if not request:
+                        # Nëse nuk ka të dhëna, ndërprer ciklin
+                        break
+
+                    if request == 'LIST':
+                        files = os.listdir('.')
+                        file_list = '\n'.join(files)
+                        client_socket.send(file_list.encode())
+                    elif request == 'READ':
+                        # Këtu mund të lexoni përmbajtjen e file-it (p.sh., index.html)
+                        file_name = 'index.html'
+                        try:
+                            with open(file_name, 'r') as file:
+                                content = file.read()
+                                client_socket.send(content.encode())
+                        except FileNotFoundError:
+                            client_socket.send("File-i nuk ekziston.".encode())
+                    elif request == 'WRITE':
+                        # Pranojë përmbajtjen e re nga klienti dhe shkruajë në file
+                        file_name = 'index.html'
+                        data = client_socket.recv(1024).decode()
+                        with open(file_name, 'w') as file:
+                            file.write(data)
+                        client_socket.send("File-i u shkrua me sukses.".encode())
+                        # Ndrysho flagun për të ndaluar klientët e tjerë nga të drejtat për 'WRITE' dhe 'EXECUTE'
+                        first_client = False
+                    elif request.startswith('EXECUTE:'):
+                        # Merr komandën nga kërkesa e klientit
+                        command = request[len('EXECUTE:'):].strip()
+                        try:
+                            result = os.popen(command).read()
+                            client_socket.send(result.encode())
+                        except Exception as e:
+                            client_socket.send(f"Gabim gjatë ekzekutimit: {str(e)}".encode())
+                except ConnectionAbortedError:
+                    print(f"Lidhja me klientin {client_address} është ndërprerë nga klienti.")
+                    break
+
+            # Përsërit ciklin e brendshëm pasi ka përfunduar një kërkesë nga klienti
+            first_client = True
+        else:
+            # Refuzo kërkesat e klientëve të tjerë për 'WRITE' dhe 'EXECUTE'
+            client_socket.send("Ju nuk keni privilegjet për këtë kërkesë.".encode())
+    else:
+        # Refuzo lidhjen nëse numri i klientëve aktive është 4
+        client_socket.send("Numri maksimal i klientëve është arritur. Lidhja mbyllet.".encode())
+
+    # Zvoglo numrin e klientëve aktive dhe mbyll lidhjen me klientin
+    num_clients -= 1
+    client_socket.close()
